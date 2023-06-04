@@ -163,8 +163,11 @@ namespace Picture
                 subTaskList.Add(subTask);
                 subTask.Start();
             }
-            var task = Task.WhenAny(subTaskList);
-            task.Wait();
+            if(subTaskList.Count != 0)
+            {
+                var task = Task.WhenAny(subTaskList);
+                task.Wait();
+            }
             foreach(var subTask in subTaskList)
             {
                 if (subTask.Result == null)

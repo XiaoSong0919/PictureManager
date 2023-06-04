@@ -121,6 +121,7 @@ namespace Picture
             Task subTask = Task.WhenAny(new Task[2] { PictureTask,RawTask});
             subTask.Wait();
             SetConfig();
+            Console.WriteLine("[INFO]Standby");
         }
         static List<FileInfo> ScanDirectory(string Path)//扫描文件夹
         {
@@ -205,7 +206,7 @@ namespace Picture
                     RawList.Add(file);
                 }
             }
-            Console.WriteLine("[Success]扫描完毕");
+            Console.WriteLine("[Finished]扫描完毕");
             Console.WriteLine($"[INFO]共发现[Picture]:{PictureCount}");
             Console.WriteLine($"[INFO]共发现[Raw]:{RawCount}");
             FileHandle();

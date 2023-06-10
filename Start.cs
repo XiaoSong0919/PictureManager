@@ -19,109 +19,114 @@ namespace Picture
         static string[] RawExtension = { ".raw",".cr2",".cr3",".dng"};
         static List<FileInfo> PictureList= new();//已扫描的图片
         static List<FileInfo> RawList= new();//已扫描的原始文件
-        static List<string> HashList = new();//Hash列表
+        static List<string> PictureHashList = new();//Picture Hash列表
+        static List<string> RawHashList = new();//Raw Hash列表
         static string InputPath;
         static string OutputPath;
         static System.Timers.Timer ScanFileTimer = new();
         static void Main(string[] args)
         {            
-            Console.WriteLine("[INFO]请输入目标路径:");
+            Console.Out.WriteLine("[INFO]请输入目标路径:");
             InputPath = Console.ReadLine();
             while(!Directory.Exists(InputPath))
             {
-                Console.WriteLine("[ERROR]目标路径不存在，请重新输入:");
+                Console.Out.WriteLine("[ERROR]目标路径不存在，请重新输入:");
                 InputPath = Console.ReadLine();
             }
-            Console.WriteLine($"目标路径:{InputPath}");
-            Console.WriteLine("[INFO]请输入输出路径:");
+            Console.Out.WriteLine($"目标路径:{InputPath}");
+            Console.Out.WriteLine("[INFO]请输入输出路径:");
             OutputPath = Console.ReadLine();
             while (!Directory.Exists(OutputPath))
             {
-                Console.WriteLine("[ERROR]此路径不存在，请重新输入:");
+                Console.Out.WriteLine("[ERROR]此路径不存在，请重新输入:");
                 OutputPath = Console.ReadLine();
             }
-            Console.WriteLine($"输出路径:{OutputPath}");
-            Console.WriteLine($"[Debug]正在读取Config...");
+            Console.Out.WriteLine($"输出路径:{OutputPath}");
+            Console.Out.WriteLine($"[Debug]正在读取Config...");
             ReadConfig();
-            Console.WriteLine($"[Debug]开始执行...");
+            Console.Out.WriteLine($"[Debug]开始执行...");
             ScanFileTimer.Interval = 600;
             ScanFileTimer.Elapsed += DiscoverNewFile();            
             ScanFileTimer.Enabled = true;
-            while(true)
-                Console.ReadKey();
-            
+            Console.Out.WriteLine("[INFO]Standby");
+            //while(true)
+            //    Console.ReadKey();
+
 
         }
         
 
         static void FileHandle()
         {
-            Task PictureTask = new(() =>
+            Console.Out.WriteLine("[INFO]准备开始整理Picture...");
+            Thread.Sleep(3000);
+            //int PictureCount = 0;
+            //////////////////////////////////////////////////////////////////
+            //////                                  Picture处理
+            //////////////////////////////////////////////////////////////////
+            Dictionary<long, FileInfo> PictureIndex = new();
+            PictureList.ForEach(Picture =>
             {
-                int PictureCount = 0;
-                Dictionary<long, FileInfo> PictureIndex = new() ;
-                PictureList.ForEach( Picture =>
-                {
-                    var CreationTime = File.GetCreationTime(Picture.FullName);
-                    long Year = CreationTime.Year;
-                    long Month = CreationTime.Month;
-                    long Day = CreationTime.Day;
-                    long Hour = CreationTime.Hour;
-                    long Minute = CreationTime.Minute;
-                    long Second = CreationTime.Second;
-                    long Millisecond = CreationTime.Millisecond;
-                    long TotalSecond = ((Year * 365 + Month * 30 + Day) * 86400 + (Hour * 3600 + Minute * 60) + Second) * 1000 + Millisecond;
-                    PictureIndex.Add(TotalSecond, Picture);
-                });
-                var IndexList = PictureIndex.Keys.ToList();
-                IndexList.Sort();
-                IndexList.ForEach(i =>
-                {
-                    var Picture = PictureIndex[i];
-                    var CreationTime = File.GetCreationTime(Picture.FullName);
-                    var Year = CreationTime.Year;
-                    var Month = CreationTime.Month;
-                    File.Move(Picture.FullName, $"{OutputPath}/Picture/{Year}/{Month.ToString().PadLeft(2, '0')}/{PictureCount++}{Picture.Extension}");
-                    PictureList.Remove(Picture);
-                    Console.WriteLine($"[INFO]已处理[Picture],新位置在\"{OutputPath}/Picture/{Year}/{Month.ToString().PadLeft(2, '0')}/{PictureCount}{Picture.Extension}\"");
-                });
+                var CreationTime = File.GetLastWriteTime(Picture.FullName);
+                long Year = CreationTime.Year;
+                long Month = CreationTime.Month;
+                long Day = CreationTime.Day;
+                long Hour = CreationTime.Hour;
+                long Minute = CreationTime.Minute;
+                long Second = CreationTime.Second;
+                long Millisecond = CreationTime.Millisecond;
+                long TotalSecond = ((Year * 365 + Month * 30 + Day) * 86400 + (Hour * 3600 + Minute * 60) + Second) * 1000 + Millisecond;
+                while (PictureIndex.ContainsKey(TotalSecond))
+                    TotalSecond++;
+                PictureIndex.Add(TotalSecond, Picture);
             });
-            PictureTask.Start();
-            Task RawTask = new(() =>
+            var PictureIndexList = PictureIndex.Keys.ToList();
+            PictureIndexList.Sort();
+            PictureIndexList.ForEach(i =>
             {
-                int RawCount = 0;
-                Dictionary<long, FileInfo> RawIndex = new();
-                RawList.ForEach(Raw =>
-                {
-                    var CreationTime = File.GetCreationTime(Raw.FullName);
-                    long Year = CreationTime.Year;
-                    long Month = CreationTime.Month;
-                    long Day = CreationTime.Day;
-                    long Hour = CreationTime.Hour;
-                    long Minute = CreationTime.Minute;
-                    long Second = CreationTime.Second;
-                    long Millisecond = CreationTime.Millisecond;
-                    long TotalSecond = ((Year * 365 + Month * 30 + Day) * 86400 + (Hour * 3600 + Minute * 60) + Second)* 1000 + Millisecond;
-                    RawIndex.Add(TotalSecond, Raw);
-                });
-                var IndexList = RawIndex.Keys.ToList();
-                IndexList.Sort();
-                IndexList.ForEach(i =>
-                {
-                    var Raw = RawIndex[i];
-                    var CreationTime = File.GetCreationTime(Raw.FullName);
-                    var Year = CreationTime.Year;
-                    var Month = CreationTime.Month;
-                    File.Move(Raw.FullName, $"{OutputPath}/Raw/{Year}/{Month.ToString().PadLeft(2, '0')}/{RawCount++}{Raw.Extension}");
-                    PictureList.Remove(Raw);
-                    Console.WriteLine($"[INFO]已处理[Raw],新位置在\"{OutputPath}/Raw/{Year}/{Month.ToString().PadLeft(2, '0')}/{RawCount}{Raw.Extension}\"");
-                });
+                var Picture = PictureIndex[i];
+                var CreationTime = File.GetLastWriteTime(Picture.FullName);
+                var Year = CreationTime.Year;
+                var Month = CreationTime.Month;
+                File.Move(Picture.FullName, $"{OutputPath}/Picture/{Year}/{Month.ToString().PadLeft(2, '0')}/P{PictureCount++}{Picture.Extension}");
+                PictureList.Remove(Picture);
+                Console.Out.WriteLine($"[INFO]已处理[Picture],新位置在\"{OutputPath}/Picture/{Year}/{Month.ToString().PadLeft(2, '0')}/P{PictureCount}{Picture.Extension}\"");
             });
-            RawTask.Start();
-            Task subTask = Task.WhenAny(new Task[2] { PictureTask,RawTask});
-            subTask.Wait();
+            //////////////////////////////////////////////////////////////////
+            //////                                  Raw处理
+            //////////////////////////////////////////////////////////////////
+            //int RawCount = 0;
+            Console.Out.WriteLine("[INFO]准备开始整理Raw...");
+            Thread.Sleep(3000);
+            Dictionary<long, FileInfo> RawIndex = new();
+            RawList.ForEach(Raw =>
+            {
+                var CreationTime = File.GetLastWriteTime(Raw.FullName);
+                long Year = CreationTime.Year;
+                long Month = CreationTime.Month;
+                long Day = CreationTime.Day;
+                long Hour = CreationTime.Hour;
+                long Minute = CreationTime.Minute;
+                long Second = CreationTime.Second;
+                long Millisecond = CreationTime.Millisecond;
+                long TotalSecond = ((Year * 365 + Month * 30 + Day) * 86400 + (Hour * 3600 + Minute * 60) + Second) * 1000 + Millisecond;
+                while (RawIndex.ContainsKey(TotalSecond))
+                    TotalSecond++;
+                RawIndex.Add(TotalSecond, Raw);
+            });
+            var RawIndexList = RawIndex.Keys.ToList();
+            RawIndexList.Sort();
+            RawIndexList.ForEach(i =>
+            {
+                var Raw = RawIndex[i];
+                var CreationTime = File.GetLastWriteTime(Raw.FullName);
+                var Year = CreationTime.Year;
+                var Month = CreationTime.Month;
+                File.Move(Raw.FullName, $"{OutputPath}/Raw/{Year}/{Month.ToString().PadLeft(2, '0')}/R{RawCount++}{Raw.Extension}");
+                PictureList.Remove(Raw);
+                Console.Out.WriteLine($"[INFO]已处理[Raw],新位置在\"{OutputPath}/Raw/{Year}/{Month.ToString().PadLeft(2, '0')}/R{RawCount}{Raw.Extension}\"");
+            });
             SetConfig();
-            Console.WriteLine("[INFO]Standby");
         }
         static List<FileInfo> ScanDirectory(string Path)//扫描文件夹
         {
@@ -137,27 +142,39 @@ namespace Picture
                     Task<List<FileInfo>> subTask = new(() => { return ScanDirectory(dir.FullName); });
                     subTaskList.Add(subTask);
                     subTask.Start();
-                    Console.WriteLine($"[Debug]已创建子线程，目标路径:{dir.FullName}");
+                    Console.Out.WriteLine($"[Debug]已创建子线程，目标路径:{dir.FullName}");
                 }
             }
             FileCount += Filelist.Length;
 
             foreach( FileInfo file in Filelist )
             {
-                if (file.Name == "PictureManager.config")
+                if (file.Name == "PictureManager.config" || !(PictureExtension.Contains(file.Extension.ToLower()) || RawExtension.Contains(file.Extension.ToLower())))
                     continue;
                 Task<List<FileInfo>> subTask = new(() => 
                 {                    
-                    Console.WriteLine($"[Debug]正在计算Hash，目标:{file.FullName}");
-                    var FileMD5 = Convert.ToBase64String(MD5.HashData(File.ReadAllBytes(file.FullName)));
-                    if (HashList.Contains(FileMD5))
-                        Console.WriteLine("[Debug]已录入文件，Skipping...");
-                    else if (PictureExtension.Contains(file.Extension.ToLower()) || RawExtension.Contains(file.Extension.ToLower()))
+                    Console.Out.WriteLine($"[Debug]正在计算Hash，目标:{file.FullName}");
+                    StreamReader Reader = new(file.FullName);
+                    var Stream = Reader.BaseStream;
+                    byte[] FileBytes = new byte[Stream.Length];
+                    Stream.Read(FileBytes,0,FileBytes.Length);
+                    Stream.Close();
+                    Reader.Close();
+                    var FileMD5 = Convert.ToBase64String(MD5.HashData(FileBytes));
+                    if (!PictureHashList.Contains(FileMD5) && PictureExtension.Contains(file.Extension.ToLower()))
                     {
                         DiscverFileList.Add(file);
-                        HashList.Add(FileMD5);
-                        Console.WriteLine($"[INFO]发现文件:{file.Name}");
+                        PictureHashList.Add(FileMD5);
+                        Console.Out.WriteLine($"[INFO]发现Picture:{file.Name}");
                     }
+                    else if (!RawHashList.Contains(FileMD5) && RawExtension.Contains(file.Extension.ToLower()))
+                    {
+                        DiscverFileList.Add(file);
+                        RawHashList.Add(FileMD5);
+                        Console.Out.WriteLine($"[INFO]发现Raw:{file.Name}");
+                    }
+                    else
+                        Console.Out.WriteLine("[Debug]已录入文件，Skipping...");
                     return null;
                 });
                 subTaskList.Add(subTask);
@@ -186,10 +203,12 @@ namespace Picture
             var NewFileList = ScanDirectory(InputPath);
             Directory.CreateDirectory($"{OutputPath}/Picture/");
             Directory.CreateDirectory($"{OutputPath}/Raw/");
+            int PictureCount = 0;
+            int RawCount = 0;
             foreach (FileInfo file in NewFileList)
             {
                 //检查文件夹
-                var CreationTime = File.GetCreationTime(file.FullName);
+                var CreationTime = File.GetLastWriteTime(file.FullName);
                 var Year = CreationTime.Year;
                 var Month = CreationTime.Month;
                 Directory.CreateDirectory($"{OutputPath}/Picture/{Year}");
@@ -209,21 +228,28 @@ namespace Picture
                     RawList.Add(file);
                 }
             }
-            Console.WriteLine("[Finished]扫描完毕");
-            Console.WriteLine($"[INFO]共发现[Picture]:{PictureCount}");
-            Console.WriteLine($"[INFO]共发现[Raw]:{RawCount}");
+            Console.Out.WriteLine("[Finished]扫描完毕");
+            Console.Out.WriteLine($"[INFO]共发现[Picture]:{PictureCount}");
+            Console.Out.WriteLine($"[INFO]共发现[Raw]:{RawCount}");
             FileHandle();
             return null;
         }
         static void SetConfig()
         {
+            Console.Out.WriteLine("[INFO]正在写入Config...");
             string ConfigPath = $"{OutputPath}/PictureManager.config";
-            File.WriteAllText(ConfigPath,"[FileHashList]\n");
-            HashList.ForEach(Hash =>
+            File.WriteAllText(ConfigPath,"[PictureHashList]\n");
+            PictureHashList.ForEach(Hash =>
             {
                 File.AppendAllText(ConfigPath,$"{Hash}\n");
             });
-            File.AppendAllText(ConfigPath, "[FileHashListEnd]\n");
+            File.AppendAllText(ConfigPath, "[PictureHashListEnd]\n");
+            File.AppendAllText(ConfigPath, "[RawHashList]\n");
+            RawHashList.ForEach(Hash =>
+            {
+                File.AppendAllText(ConfigPath, $"{Hash}\n");
+            });
+            File.AppendAllText(ConfigPath, "[RawHashListEnd]\n");
             File.AppendAllText(ConfigPath, "[FileCount]\n");
             File.AppendAllText(ConfigPath, $"PictureCount={PictureCount}\n");
             File.AppendAllText(ConfigPath, $"RawCount={RawCount}\n");
@@ -234,20 +260,19 @@ namespace Picture
             string ConfigPath = $"{OutputPath}/PictureManager.config";
             if (File.Exists(ConfigPath))
             {
-                Console.WriteLine($"[Debug]Config有效，正在读取...");
-                Thread.Sleep(500);
+                Console.Out.WriteLine($"[Debug]Config有效，正在读取...");
                 var Contents = File.ReadAllLines(ConfigPath);
                 string NowArea = null;
                 foreach (var Line in Contents)
                 {
-                    if (Line == "[FileHashList]")
+                    if (Line == "[PictureHashList]")
                     {
-                        NowArea = "FileHashList";
+                        NowArea = "PictureHashList";
                         continue;
                     }
-                    else if (Line == "[FileHashListEnd]")
+                    else if (Line == "[RawHashList]")
                     {
-                        NowArea = null;
+                        NowArea = "RawHashList";
                         continue;
                     }
                     else if (Line == "[FileCount]")
@@ -255,13 +280,15 @@ namespace Picture
                         NowArea = "FileCount";
                         continue;
                     }
-                    else if (Line == "[FileCountEnd]")
+                    else if (Line.Contains("End"))
                     {
                         NowArea = null;
                         continue;
                     }
-                    if (NowArea == "FileHashList")
-                        HashList.Add(Line);
+                    if (NowArea == "PictureHashList")
+                        PictureHashList.Add(Line);
+                    else if (NowArea == "RawHashList")
+                        RawHashList.Add(Line);
                     else if (NowArea == "FileCount")
                     {
                         if (Line.Contains("Picture"))
@@ -271,11 +298,12 @@ namespace Picture
                     }
 
                 }
-                Console.WriteLine($"[Debug]Config读取完毕");
+                Console.Out.WriteLine($"[Debug]Config读取完毕");
                 Thread.Sleep(500);
             }
             else
-                File.Create(ConfigPath);
+                Console.Out.WriteLine($"[Debug]Config不存在");
+            Thread.Sleep(1000);
         }
     }
 }

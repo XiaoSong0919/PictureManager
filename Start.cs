@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -13,10 +14,15 @@ namespace Picture
     internal class Start
     {
         static int FileCount = 0;
+#if DEBUG
+        static string Mode = "Debug  ";
+#else
+        static string Mode = "Release";
+#endif
         static int PictureCount = 0;
         static int RawCount = 0;
         static string[] PictureExtension = { ".jpg",".png",".jpeg",".webp",".gif",".psd"};
-        static string[] RawExtension = { ".raw",".cr2",".cr3",".dng"};
+        static string[] RawExtension = { ".raw",".cr2",".cr3",".dng",".arw",".ari"};
         static List<FileInfo> PictureList= new();//已扫描的图片
         static List<FileInfo> RawList= new();//已扫描的原始文件
         static List<string> PictureHashList = new();//Picture Hash列表
@@ -29,8 +35,20 @@ namespace Picture
             public FileInfo FileInfo;
             public byte[] Data;
         }
+        static void Logo()
+        {
+            Console.WriteLine("##################################################################################################");
+            Console.WriteLine($"#                Picture Manager v{Assembly.GetExecutingAssembly().GetName().Version}                                                        #");
+            Console.WriteLine($"#                Author       : LeZi                                                             #");
+            Console.WriteLine($"#                Framework    : .Net 7.0                                                         #");
+            Console.WriteLine($"#                Release Date : 2023/07/01                                                       #");
+            Console.WriteLine($"#                Github:      : https://github.com/XiaoSong0919/PictureManager                   #");
+            Console.WriteLine($"#                Mode         : {Mode}                                                          #");
+            Console.WriteLine("##################################################################################################");
+        }
         static void Main(string[] args)
-        {            
+        {
+            Logo();
             Console.Out.WriteLineAsync("[INFO]请输入目标路径:");
             InputPath = Console.ReadLine();
             while(!Directory.Exists(InputPath))
@@ -47,9 +65,11 @@ namespace Picture
                 OutputPath = Console.ReadLine();
             }
             Console.Out.WriteLineAsync($"输出路径:{OutputPath}");
+#if DEBUG
             Console.Out.WriteLineAsync($"[Debug]正在读取Config...");
+#endif
             ReadConfig();
-            Console.Out.WriteLineAsync($"[Debug]开始执行...");
+            Console.Out.WriteLineAsync($"[INFO]开始整理...");
             ScanFileTimer.Interval = 600;
             ScanFileTimer.Elapsed += DiscoverNewFile();            
             ScanFileTimer.Enabled = true;
@@ -94,8 +114,8 @@ namespace Picture
                 var CreationTime = File.GetLastWriteTime(Picture.FullName);
                 var Year = CreationTime.Year;
                 var Month = CreationTime.Month;
-                var FilePath = Picture.FullName;
-                var FileNewPath = $"{OutputPath}/Picture/{Year}/{Month.ToString().PadLeft(2, '0')}/P{PictureCount++}{Picture.Extension}";
+                var FilePath = Picture.FullName.Replace("\\", "/");
+                var FileNewPath = $"{OutputPath.Replace("\\","/")}/Picture/{Year}/{Month.ToString().PadLeft(2, '0')}/P{PictureCount++}{Picture.Extension}".Replace("//","/");
                 if(File.Exists(FileNewPath))//存在同名文件
                 {
                     FileInfo ExistsFileInfo = new(FileNewPath);
@@ -104,10 +124,10 @@ namespace Picture
                     FileReader.Read(FileData, 0, FileData.Length);
                     TemporaryData tmpdata = new();
                     tmpdata.Data = FileData;
-                    tmpdata.FileInfo = ExistsFileInfo;
-                    File.Delete(FileNewPath);
+                    tmpdata.FileInfo = ExistsFileInfo;                    
                     PTemporaryList.Add(FileNewPath,tmpdata);
                     FileReader.Close();
+                    File.Delete(FileNewPath);
                     Console.Out.WriteLineAsync($"[INFO]已缓存[Picture]");
 
                 }
@@ -120,11 +140,19 @@ namespace Picture
                 else
                 {
                     TemporaryData TemporaryFile = PTemporaryList[FilePath];
-                    FileStream FileWriter = new(FileNewPath, FileMode.Open, FileAccess.Read);//写入到新位置
+                    FileStream FileWriter = File.Create(FileNewPath, TemporaryFile.Data.Length, FileOptions.WriteThrough);//写入到新位置
                     byte[] Data = TemporaryFile.Data;
                     FileWriter.Write(Data,0,Data.Length);
                     FileWriter.Close();
                     PTemporaryList.Remove(FilePath);
+                    FileInfo RawInfo = TemporaryFile.FileInfo;
+                    FileInfo NewInfo = new(FileNewPath);
+                    NewInfo.CreationTime = RawInfo.CreationTime;
+                    NewInfo.LastAccessTime = RawInfo.LastAccessTime;
+                    NewInfo.LastWriteTime = RawInfo.LastWriteTime;
+                    NewInfo.CreationTimeUtc = RawInfo.CreationTimeUtc;
+                    NewInfo.LastAccessTimeUtc = RawInfo.LastAccessTimeUtc;
+                    NewInfo.LastWriteTimeUtc = RawInfo.LastWriteTimeUtc;
                     Console.Out.WriteLineAsync($"[INFO]已处理[Picture],新位置在\"{FileNewPath}\"");
                     PictureList.Remove(Picture);
                 }
@@ -162,8 +190,8 @@ namespace Picture
                 var CreationTime = File.GetLastWriteTime(Raw.FullName);
                 var Year = CreationTime.Year;
                 var Month = CreationTime.Month;
-                var FilePath = Raw.FullName;
-                var FileNewPath = $"{OutputPath}/Raw/{Year}/{Month.ToString().PadLeft(2, '0')}//R{RawCount++}{Raw.Extension}";
+                var FilePath = Raw.FullName.Replace("\\", "/");
+                var FileNewPath = $"{OutputPath.Replace("\\", "/")}/Raw/{Year}/{Month.ToString().PadLeft(2, '0')}//R{RawCount++}{Raw.Extension}".Replace("//", "/");
                 if (File.Exists(FileNewPath))//存在同名文件
                 {
                     FileInfo ExistsFileInfo = new(FileNewPath);
@@ -173,9 +201,9 @@ namespace Picture
                     TemporaryData tmpdata = new();
                     tmpdata.Data = FileData;
                     tmpdata.FileInfo = ExistsFileInfo;
-                    File.Delete(FileNewPath);
                     RTemporaryList.Add(FileNewPath, tmpdata);
-                    FileReader.Close();
+                    FileReader.Close(); 
+                    File.Delete(FileNewPath);
                     Console.Out.WriteLineAsync($"[INFO]已缓存[Raw]");
 
                 }
@@ -188,11 +216,19 @@ namespace Picture
                 else
                 {
                     TemporaryData TemporaryFile = RTemporaryList[FilePath];
-                    FileStream FileWriter = new(FileNewPath, FileMode.Open, FileAccess.Read);//写入到新位置
+                    FileStream FileWriter = File.Create(FileNewPath, TemporaryFile.Data.Length, FileOptions.WriteThrough);//写入到新位置
                     byte[] Data = TemporaryFile.Data;
                     FileWriter.Write(Data, 0, Data.Length);
                     FileWriter.Close();
                     RTemporaryList.Remove(FilePath);
+                    FileInfo RawInfo = TemporaryFile.FileInfo;
+                    FileInfo NewInfo = new(FileNewPath);
+                    NewInfo.CreationTime = RawInfo.CreationTime;
+                    NewInfo.LastAccessTime = RawInfo.LastAccessTime;
+                    NewInfo.LastWriteTime = RawInfo.LastWriteTime;
+                    NewInfo.CreationTimeUtc = RawInfo.CreationTimeUtc;
+                    NewInfo.LastAccessTimeUtc = RawInfo.LastAccessTimeUtc;
+                    NewInfo.LastWriteTimeUtc = RawInfo.LastWriteTimeUtc;
                     Console.Out.WriteLineAsync($"[INFO]已处理[Raw],新位置在\"{FileNewPath}\"");
                     RawList.Remove(Raw);
                 }
@@ -215,7 +251,9 @@ namespace Picture
                     Task<List<FileInfo>> subTask = new(() => { return ScanDirectory(dir.FullName); });
                     subTaskList.Add(subTask);
                     subTask.Start();
+#if DEBUG
                     Console.Out.WriteLineAsync($"[Debug]已创建子线程，目标路径:{dir.FullName}");
+#endif
                 }
             }
             FileCount += Filelist.Length;
@@ -224,31 +262,37 @@ namespace Picture
             {
                 if (file.Name == "PictureManager.config" || !(PictureExtension.Contains(file.Extension.ToLower()) || RawExtension.Contains(file.Extension.ToLower())))
                     continue;
+                if (file.Length < 1000000)//跳过小于1M的文件
+                    continue;
                 Task<List<FileInfo>> subTask = new(() => 
-                {   
-                    
+                {
+#if DEBUG
                     Console.Out.WriteLineAsync($"[Debug]正在计算Hash，目标:{file.FullName}");
+#endif
                     StreamReader Reader = new(file.FullName);
                     var Stream = Reader.BaseStream;
-                    byte[] FileBytes = new byte[Stream.Length];
-                    Stream.Read(FileBytes,0,FileBytes.Length);
+                    byte[] Data = new byte[file.Length];
+                    Stream.Read(Data, 0, Data.Length);       
+                    var FileHash = Convert.ToBase64String(SHA512.HashData(Data));//计算Hash并转换为string
                     Stream.Close();
                     Reader.Close();
-                    var FileMD5 = Convert.ToBase64String(MD5.HashData(FileBytes));
-                    if (!PictureHashList.Contains(FileMD5) && PictureExtension.Contains(file.Extension.ToLower()))
+                    Data = null;
+                    if (!PictureHashList.Contains(FileHash) && PictureExtension.Contains(file.Extension.ToLower()))
                     {
                         DiscverFileList.Add(file);
-                        PictureHashList.Add(FileMD5);
+                        PictureHashList.Add(FileHash);
                         Console.Out.WriteLineAsync($"[INFO]发现Picture:{file.Name}");
                     }
-                    else if (!RawHashList.Contains(FileMD5) && RawExtension.Contains(file.Extension.ToLower()))
+                    else if (!RawHashList.Contains(FileHash) && RawExtension.Contains(file.Extension.ToLower()))
                     {
                         DiscverFileList.Add(file);
-                        RawHashList.Add(FileMD5);
+                        RawHashList.Add(FileHash);
                         Console.Out.WriteLineAsync($"[INFO]发现Raw:{file.Name}");
                     }
+#if DEBUG
                     else
                         Console.Out.WriteLineAsync("[Debug]已录入文件，Skipping...");
+#endif
                     return null;
                 });
                 subTaskList.Add(subTask);
@@ -333,7 +377,9 @@ namespace Picture
             string ConfigPath = $"{OutputPath}/PictureManager.config";
             if (File.Exists(ConfigPath))
             {
+#if DEBUG
                 Console.Out.WriteLineAsync($"[Debug]Config有效，正在读取...");
+#endif
                 var Contents = File.ReadAllLines(ConfigPath);
                 string NowArea = null;
                 foreach (var Line in Contents)
@@ -371,12 +417,18 @@ namespace Picture
                     }
 
                 }
+#if DEBUG
                 Console.Out.WriteLineAsync($"[Debug]Config读取完毕");
                 Thread.Sleep(500);
-            }
-            else
+#endif
+                
+            }            
+#if DEBUG
+                else
                 Console.Out.WriteLineAsync($"[Debug]Config不存在");
-            Thread.Sleep(1000);
+                Thread.Sleep(1000);
+#endif
+            
         }
     }
 }

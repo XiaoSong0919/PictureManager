@@ -5,9 +5,9 @@
     <TargetFramework>net7.0</TargetFramework>
     <Copyright>Copyright © 2023 LeZi All Rights Reserved.</Copyright>
     <PackageProjectUrl>https://github.com/XiaoSong0919/PictureManager</PackageProjectUrl>
-    <AssemblyVersion>1.1.9.0</AssemblyVersion>
-    <FileVersion>1.1.9.0</FileVersion>
-    <Version>1.1.9</Version>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+	<Deterministic>False</Deterministic>
+	  <Version></Version>
   </PropertyGroup>
 
 </Project>

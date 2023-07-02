@@ -1,7 +1,9 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net.WebSockets;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
@@ -11,18 +13,89 @@ using System.Timers;
 
 namespace Picture
 {
+    internal class FileInfoList : IEnumerable
+    {
+        List<FileInfo> InternelList = new();
+        public int Length
+        {
+            get
+            { return InternelList.Count; }
+        }
+        public void Add(FileInfo info)
+        {
+            InternelList.Add(info);
+        }
+        public void Remove(FileInfo info) 
+        {  
+            InternelList.Remove(info); 
+        }
+        public FileInfo this[int index]
+        {
+            get
+            {
+                return InternelList[index];
+            }
+        }
+        public void Merge(FileInfoList TargetList)//合并操作
+        {
+            foreach (FileInfo fileinfo in TargetList)
+                InternelList.Add(fileinfo);
+        }
+        public void Merge(List<FileInfo> TargetList)//合并操作
+        {
+            foreach (FileInfo fileinfo in TargetList)
+                InternelList.Add(fileinfo);
+        }
+        public IEnumerator GetEnumerator()
+        {
+            return new FileInfoListEnumerator(this); 
+        }
+        class FileInfoListEnumerator : IEnumerator
+        {
+            FileInfoList Member;
+            int Index;
+            public FileInfoListEnumerator(FileInfoList member)
+            {
+                this.Member = member;
+                this.Index = -1;
+            }
+            public bool MoveNext()
+            {
+                if(Index < Member.Length)
+                    Index++;
+                return Index < Member.Length;
+
+            }
+            public object Current
+            {
+                get 
+                { 
+                    if(Index == -1 || Index == Member.Length)
+                        throw new InvalidOperationException();
+                    return Member[Index];
+                }
+            }
+            public void Reset()
+            {
+                Index = -1;
+            }
+        }
+
+    }
     internal class Start
     {
-        static int FileCount = 0;
-#if DEBUG
+        static bool MultiThreading = false;//是否启用多线程
+        #if DEBUG
         static string Mode = "Debug  ";
-#else
+        #else
         static string Mode = "Release";
-#endif
+        #endif
         static int PictureCount = 0;
         static int RawCount = 0;
+
         static string[] PictureExtension = { ".jpg",".png",".jpeg",".webp",".gif",".psd"};
         static string[] RawExtension = { ".raw",".cr2",".cr3",".dng",".arw",".ari"};
+
         static List<FileInfo> PictureList= new();//已扫描的图片
         static List<FileInfo> RawList= new();//已扫描的原始文件
         static List<string> PictureHashList = new();//Picture Hash列表
@@ -38,7 +111,7 @@ namespace Picture
         static void Logo()
         {
             Console.WriteLine("##################################################################################################");
-            Console.WriteLine($"#                Picture Manager v{Assembly.GetExecutingAssembly().GetName().Version}                                                        #");
+            Console.WriteLine($"                 Picture Manager v{Assembly.GetExecutingAssembly().GetName().Version}");
             Console.WriteLine($"#                Author       : LeZi                                                             #");
             Console.WriteLine($"#                Framework    : .Net 7.0                                                         #");
             Console.WriteLine($"#                Release Date : 2023/07/01                                                       #");
@@ -49,6 +122,17 @@ namespace Picture
         static void Main(string[] args)
         {
             Logo();
+            Console.Out.WriteLineAsync("[INFO]是否启用多线程？");
+            Console.Out.WriteLineAsync("y(Yes) n(No) Default : Yes");
+            switch(Console.ReadLine())
+            {
+                case "n":
+                    MultiThreading = false;
+                    break;
+                default:
+                    MultiThreading = true;
+                    break;
+            }
             Console.Out.WriteLineAsync("[INFO]请输入目标路径:");
             InputPath = Console.ReadLine();
             while(!Directory.Exists(InputPath))
@@ -65,9 +149,7 @@ namespace Picture
                 OutputPath = Console.ReadLine();
             }
             Console.Out.WriteLineAsync($"输出路径:{OutputPath}");
-#if DEBUG
-            Console.Out.WriteLineAsync($"[Debug]正在读取Config...");
-#endif
+            Console.Out.WriteLineAsync($"[INFO]正在读取Config...");
             ReadConfig();
             Console.Out.WriteLineAsync($"[INFO]开始整理...");
             ScanFileTimer.Interval = 600;
@@ -78,8 +160,7 @@ namespace Picture
             //    Console.ReadKey();
 
 
-        }
-        
+        }      
 
         static void FileHandle()
         {
@@ -237,34 +318,83 @@ namespace Picture
             RTemporaryList.Clear();
             SetConfig();
         }
-        static List<FileInfo> ScanDirectory(string Path)//扫描文件夹
+        //需要返回FileInfo的集合
+        static FileInfoList ScanDirectory(string Path)//扫描文件夹
         {
             DirectoryInfo dInfo = new(Path);
-            FileInfo[] Filelist = dInfo.GetFiles();
-            var Directorylist = dInfo.GetDirectories();
-            List<FileInfo> DiscverFileList = new();
-            List<Task<List<FileInfo>>> subTaskList = new();
+            FileInfo[] Filelist = dInfo.GetFiles();//获取当前目录的文件列表
+            var Directorylist = dInfo.GetDirectories();//获取当前目录的文件夹列表
+            FileInfoList FileInfoList = new();
+
+            //List<FileInfo> DiscverFileList = new();
+            List<Task<FileInfoList>> subDirTaskList = new();
+
+
+            //递归扫描文件夹
             if (Directorylist.Length != 0)
             {
                 foreach (var dir in Directorylist)
                 {
-                    Task<List<FileInfo>> subTask = new(() => { return ScanDirectory(dir.FullName); });
-                    subTaskList.Add(subTask);
-                    subTask.Start();
+                    if (MultiThreading)
+                    {
+                        Task<FileInfoList> subDirTask = new(() => { return ScanDirectory(dir.FullName); });
+                        subDirTaskList.Add(subDirTask);
+                        subDirTask.Start();
 #if DEBUG
-                    Console.Out.WriteLineAsync($"[Debug]已创建子线程，目标路径:{dir.FullName}");
+                        Console.Out.WriteLineAsync($"[Debug]已创建子线程，目标路径:{dir.FullName}");
 #endif
+                    }
+                    else
+                        FileInfoList.Merge(ScanDirectory(dir.FullName));
                 }
             }
-            FileCount += Filelist.Length;
 
-            foreach( FileInfo file in Filelist )
+            List<Task> subTaskList = new();
+            //递归文件列表，计算Hash
+            foreach (FileInfo file in Filelist)
             {
+                //排除条件
                 if (file.Name == "PictureManager.config" || !(PictureExtension.Contains(file.Extension.ToLower()) || RawExtension.Contains(file.Extension.ToLower())))
                     continue;
                 if (file.Length < 1000000)//跳过小于1M的文件
                     continue;
-                Task<List<FileInfo>> subTask = new(() => 
+
+                if(MultiThreading)
+                {
+                    Task subTask = new(() =>
+                    {
+#if DEBUG
+                        Console.Out.WriteLineAsync($"[Debug]正在计算Hash，目标:{file.FullName}");
+#endif
+                        StreamReader Reader = new(file.FullName);
+                        var Stream = Reader.BaseStream;
+                        byte[] Data = new byte[file.Length];
+                        Stream.Read(Data, 0, Data.Length);
+                        var FileHash = Convert.ToBase64String(SHA512.HashData(Data));//计算Hash并转换为string
+                        Stream.Close();
+                        Reader.Close();
+                        Data = null;
+                        if (!PictureHashList.Contains(FileHash) && PictureExtension.Contains(file.Extension.ToLower()))//已扫描Picture
+                        {
+                            FileInfoList.Add(file);
+                            PictureHashList.Add(FileHash);
+                            Console.Out.WriteLineAsync($"[INFO]发现Picture:{file.Name}");
+                        }
+                        else if (!RawHashList.Contains(FileHash) && RawExtension.Contains(file.Extension.ToLower()))//已扫描Raw
+                        {
+                            FileInfoList.Add(file);
+                            RawHashList.Add(FileHash);
+                            Console.Out.WriteLineAsync($"[INFO]发现Raw:{file.Name}");
+                        }
+#if DEBUG
+                        else
+                            Console.Out.WriteLineAsync("[Debug]已录入文件，Skipping...");
+#endif
+                    });
+                    subTaskList.Add(subTask);
+                    subTask.Start();
+                }
+                else
                 {
 #if DEBUG
                     Console.Out.WriteLineAsync($"[Debug]正在计算Hash，目标:{file.FullName}");
@@ -272,46 +402,40 @@ namespace Picture
                     StreamReader Reader = new(file.FullName);
                     var Stream = Reader.BaseStream;
                     byte[] Data = new byte[file.Length];
-                    Stream.Read(Data, 0, Data.Length);       
+                    Stream.Read(Data, 0, Data.Length);
                     var FileHash = Convert.ToBase64String(SHA512.HashData(Data));//计算Hash并转换为string
                     Stream.Close();
                     Reader.Close();
                     Data = null;
-                    if (!PictureHashList.Contains(FileHash) && PictureExtension.Contains(file.Extension.ToLower()))
+                    if (!PictureHashList.Contains(FileHash) && PictureExtension.Contains(file.Extension.ToLower()))//已扫描Picture
                     {
-                        DiscverFileList.Add(file);
+                        FileInfoList.Add(file);
                         PictureHashList.Add(FileHash);
                         Console.Out.WriteLineAsync($"[INFO]发现Picture:{file.Name}");
                     }
-                    else if (!RawHashList.Contains(FileHash) && RawExtension.Contains(file.Extension.ToLower()))
+                    else if (!RawHashList.Contains(FileHash) && RawExtension.Contains(file.Extension.ToLower()))//已扫描Raw
                     {
-                        DiscverFileList.Add(file);
+                        FileInfoList.Add(file);
                         RawHashList.Add(FileHash);
                         Console.Out.WriteLineAsync($"[INFO]发现Raw:{file.Name}");
                     }
-#if DEBUG
+
                     else
                         Console.Out.WriteLineAsync("[Debug]已录入文件，Skipping...");
-#endif
-                    return null;
-                });
-                subTaskList.Add(subTask);
-                subTask.Start();
+                }
             }
-            if(subTaskList.Count != 0)
-            {
+
+            if (subTaskList.Count != 0)
                 Task.WaitAll(subTaskList.ToArray());
-            }
-            foreach(var subTask in subTaskList)
+
+            foreach (var subTask in subDirTaskList)
             {
                 if (subTask.Result == null)
                     continue;
-                var FileList = subTask.Result;
-                foreach(FileInfo file in FileList )
-                    DiscverFileList.Add(file);
-                
+                var _FileInfoList = subTask.Result;
+                FileInfoList.Merge(_FileInfoList);
             }
-            return DiscverFileList;
+            return FileInfoList;
 
 
         }
@@ -417,17 +541,16 @@ namespace Picture
                     }
 
                 }
-#if DEBUG
-                Console.Out.WriteLineAsync($"[Debug]Config读取完毕");
-                Thread.Sleep(500);
-#endif
+                Console.Out.WriteLineAsync($"[INFO]Config读取完毕");
+                Thread.Sleep(1000);
                 
             }            
-#if DEBUG
-                else
+             else
+             {
                 Console.Out.WriteLineAsync($"[Debug]Config不存在");
                 Thread.Sleep(1000);
-#endif
+             }
+                
             
         }
     }
